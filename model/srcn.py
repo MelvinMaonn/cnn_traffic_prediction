@@ -11,7 +11,7 @@ class SRCN():
 
         with tf.name_scope('inputs'):
             self.xs = tf.placeholder(tf.float32, [None, FLAGS.image_height, FLAGS.image_width, FLAGS.image_channel], name='x_in')
-            self.ys = tf.placeholder(tf.float32, [None, FLAGS.time_step, FLAGS.road_num], name='y_in')
+            self.ys = tf.placeholder(tf.float32, [None, FLAGS.road_num], name='y_in')
         # with tf.name_scope('model'):
         #     self.buildmodel()
         # with tf.name_scope('cost'):
@@ -24,7 +24,7 @@ class SRCN():
 
         # 构建五层CNN
         #TODO 需要改变
-        filters = [1, 16, 32, 64, 64, 128]
+        filters = [12, 16, 32, 64, 64, 128]
         strides = [1, 2]
 
         feature_h = FLAGS.image_height
@@ -39,6 +39,7 @@ class SRCN():
 
         with tf.variable_scope('cnn'):
             x = self.xs
+            x = tf.reshape(x, [-1, FLAGS.image_height, FLAGS.image_width, filters[0]])
             for i in range(FLAGS.cnn_count):
                 with tf.variable_scope('unit-%d' % (i + 1)):
                     x = CNN.conv2d(x=x, name='cnn-%d' % (i + 1), filter_size=3, in_channels=filters[i], out_channels=filters[i+1], strides=strides[0])

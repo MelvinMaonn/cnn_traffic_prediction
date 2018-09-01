@@ -2,7 +2,7 @@ import tensorflow as tf
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_boolean('restore', False, 'whether to restore from the latest checkpoint')
+tf.app.flags.DEFINE_boolean('restore', True, 'whether to restore from the latest checkpoint')
 tf.app.flags.DEFINE_string('checkpoint_dir', './checkpoint/', 'the checkpoint dir')
 tf.app.flags.DEFINE_float('initial_learning_rate', 1e-3, 'inital lr')
 

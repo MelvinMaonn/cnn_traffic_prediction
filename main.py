@@ -35,16 +35,15 @@ def train(mode='train'):
                                                                   global_step=global_step)
 
     num_train_samples = 1021 * 21
-    num_batches_per_epoch = int(num_train_samples / FLAGS.batch_size)
+    num_batches_per_epoch = int((num_train_samples - 12) / FLAGS.batch_size)
     num_val_samples = 1021 * 6
     num_batches_val = int(num_val_samples / FLAGS.batch_size)
 
-    train_image, train_label = rdd.get_batch_tfrecord('/home/mm/SRCN/data1/800r_train.tfrecord', FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step, 100)
-    val_image, val_label = rdd.get_batch_tfrecord('/home/mm/SRCN/data1/800r_validation.tfrecord', FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step, 100)
+    image = rdd.get_files('/mnt/data1/mm/SRCN/data/data_30min/train/')
+    train_img = rdd.get_batch_raw(image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
+    label = np.genfromtxt('data/800r_train.txt')
 
     f = open('train_and_val_result.txt', 'w')
-
-    label = np.genfromtxt('G:/SRCN/November_800r_velocity_cnn.txt')
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
@@ -54,7 +53,7 @@ def train(mode='train'):
 
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=100)
         merged = tf.summary.merge_all()
-        writer = tf.summary.FileWriter("/home/mm/SRCN/logs", sess.graph)
+        writer = tf.summary.FileWriter("logs/", sess.graph)
         #train_writer = tf.summary.FileWriter(FLAGS.log_dir + '/train', sess.graph)
         if FLAGS.restore:
             ckpt = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
@@ -78,32 +77,22 @@ def train(mode='train'):
                 for cur_batch in range(num_batches_per_epoch):
 
                     #x, y = sess.run([train_image, train_label])
-                    x = 1
+                    x = sess.run(train_img)
                     y = rdd.get_label(cur_batch*FLAGS.batch_size, label)
 
-                    if cur_epoch == 0 and cur_batch == 0:
+                    feed_dict = {
+                        srcn.xs: x,
+                        srcn.ys: y,
+                        # create initial state
+                    }
 
-                        feed_dict = {
-                            srcn.xs: x,
-                            srcn.ys: y,
-                            # create initial state
-                        }
-                    else:
-                        feed_dict = {
-                            srcn.xs: x,
-                            srcn.ys: y,
-                            # TODO 后期需要评估是否应该吧上一次的state给到下一次
-                            srcn.lstm2.cell_init_state: state  # use last state as the initial state for this run
-                        }
-
-                    _, loss, state, pred = sess.run([train_op, srcn.losses, srcn.lstm2.cell_final_state, srcn.pred],
-                                                    feed_dict=feed_dict)
+                    _, loss, pred = sess.run([train_op, srcn.losses, srcn.pred], feed_dict=feed_dict)
                     # calculate the cost
                     #train_cost += batch_cost * FLAGS.batch_size
 
                     tf.summary.scalar('lrn_rate', lrn_rate)
 
-                    if cur_batch % 1000 == 0:
+                    if cur_batch % 100 == 0:
                         rs = sess.run(merged, feed_dict=feed_dict)
                         writer.add_summary(rs, cur_batch)
                         print(str(cur_batch) + ":" + str(loss))
@@ -115,6 +104,7 @@ def train(mode='train'):
                 logger.info('save checkpoint at step {0}', format(cur_epoch))
                 saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'srcn-model.ckpt'), global_step=cur_epoch)
 
+                '''
                 for cur_batch in range(num_batches_val):
 
                     x, y = sess.run([val_image, val_label])
@@ -128,7 +118,7 @@ def train(mode='train'):
 
                     if cur_batch % 1000 == 0:
                         print(loss)
-
+                '''
 
                 now = datetime.datetime.now()
                 log = "{}/{} {}:{}:{} Epoch {}/{}, " \

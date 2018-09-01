@@ -30,7 +30,7 @@ def get_batch_raw(image, image_H, image_W, batch_size,capacity):
     image = tf.cast(image, tf.string)
 
     #加入队列
-    input_queue = tf.train.slice_input_producer([image])
+    input_queue = tf.train.slice_input_producer([image], shuffle = False)
 
     #jpeg或者jpg格式都用decode_jpeg函数，其他格式可以去查看官方文档
     image_contents = tf.read_file(input_queue[0])
@@ -44,8 +44,6 @@ def get_batch_raw(image, image_H, image_W, batch_size,capacity):
     image_batch = tf.train.batch([image],batch_size = batch_size,num_threads=16,capacity = capacity)
 
     images_batch = tf.cast(image_batch, tf.float32)
-
-    # y = get_label(0)
 
     return images_batch
 
@@ -88,14 +86,10 @@ def get_batch_tfrecord(dir, image_H, image_W, batch_size, capacity):
 
 def get_label(start, label):
 
-    start %= 6123
-
-    start *= FLAGS.batch_size
-
-    label_list = np.zeros(shape=[FLAGS.batch_size, FLAGS.time_step, FLAGS.road_num])
+    label_list = np.zeros(shape=[FLAGS.batch_size, FLAGS.road_num])
 
     for i in range(FLAGS.batch_size):
-        label_list[i] = label[start+1+i : start+1+i+FLAGS.time_step]
+        label_list[i] = label[start+i+FLAGS.time_step]
 
     # label_list = tf.cast(label_list, tf.float32)
 
