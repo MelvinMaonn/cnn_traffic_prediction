@@ -8,12 +8,12 @@ from model.srcn import SRCN
 import data.read_data as rdd
 from utils import FLAGS
 
-from sklearn.metrics import mean_absolute_error
+
 
 import os
 import logging
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 logger = logging.getLogger('Train for CNN')
 logger.setLevel(logging.INFO)
@@ -39,9 +39,12 @@ def train(mode='train'):
     num_val_samples = 1021 * 6
     num_batches_val = int(num_val_samples / FLAGS.batch_size)
 
-    image = rdd.get_files('/mnt/data1/mm/SRCN/data/data_30min/train/')
-    train_img = rdd.get_batch_raw(image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
-    label = np.genfromtxt('data/800r_train.txt')
+    tr_image = rdd.get_files('/mnt/data1/mm/SRCN/data/data_30min/train/')
+    #train_img = rdd.get_batch_raw(tr_image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
+    va_image = rdd.get_files('/mnt/data1/mm/SRCN/data/data_30min/val/')
+    val_image = rdd.get_batch_raw(va_image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
+    #train_label = np.genfromtxt('data/800r_train.txt')
+    val_label = np.genfromtxt('data/800r_train.txt')
 
     f = open('train_and_val_result.txt', 'w')
 
@@ -73,12 +76,13 @@ def train(mode='train'):
             for cur_epoch in range(FLAGS.num_epochs):
                 start_time = time.time()
 
+                '''
                 # the training part
                 for cur_batch in range(num_batches_per_epoch):
 
                     #x, y = sess.run([train_image, train_label])
                     x = sess.run(train_img)
-                    y = rdd.get_label(cur_batch*FLAGS.batch_size, label)
+                    y = rdd.get_label(cur_batch*FLAGS.batch_size, train_label)
 
                     feed_dict = {
                         srcn.xs: x,
@@ -103,11 +107,12 @@ def train(mode='train'):
                     print('no checkpoint')
                 logger.info('save checkpoint at step {0}', format(cur_epoch))
                 saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'srcn-model.ckpt'), global_step=cur_epoch)
-
                 '''
+
                 for cur_batch in range(num_batches_val):
 
-                    x, y = sess.run([val_image, val_label])
+                    x = sess.run(val_image)
+                    y = rdd.get_label(cur_batch * FLAGS.batch_size, val_label)
 
                     feed_dict = {
                         srcn.xs: x,
@@ -116,16 +121,17 @@ def train(mode='train'):
 
                     loss, pred = sess.run([srcn.losses, srcn.pred], feed_dict=feed_dict)
 
-                    if cur_batch % 1000 == 0:
+                    if cur_batch % 100 == 0:
                         print(loss)
-                '''
+
 
                 now = datetime.datetime.now()
                 log = "{}/{} {}:{}:{} Epoch {}/{}, " \
                       "loss = {:.3f}, " \
                       "time = {:.3f}"
-                print(log.format(now.month, now.day, now.hour, now.minute, now.second,
-                                 cur_epoch + 1, FLAGS.num_epochs, loss, time.time() - start_time))
+                log = log.format(now.month, now.day, now.hour, now.minute, now.second,
+                                 cur_epoch + 1, FLAGS.num_epochs, loss, time.time() - start_time)
+                print(log)
 
                 f.write(log+'\r\n')
 
