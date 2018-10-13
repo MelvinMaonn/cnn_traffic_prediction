@@ -2,7 +2,7 @@ import tensorflow as tf
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_boolean('restore', True, 'whether to restore from the latest checkpoint')
+tf.app.flags.DEFINE_boolean('restore', False, 'whether to restore from the latest checkpoint')
 tf.app.flags.DEFINE_string('checkpoint_dir', './checkpoint/', 'the checkpoint dir')
 tf.app.flags.DEFINE_float('initial_learning_rate', 1e-3, 'inital lr')
 
@@ -30,6 +30,7 @@ tf.app.flags.DEFINE_float('momentum', 0.9, 'the momentum')
 
 tf.app.flags.DEFINE_integer('time_length', 1021, 'the time step')
 tf.app.flags.DEFINE_integer('time_step', 12, 'the time step')
+tf.app.flags.DEFINE_integer('pred_time', 1, 'the time step')
 tf.app.flags.DEFINE_integer('input_size', 655, 'the time step')
 tf.app.flags.DEFINE_integer('output_size', 655, 'the time step')
 tf.app.flags.DEFINE_integer('cell_size', 1024, 'the time step')
@@ -41,3 +42,23 @@ tf.app.flags.DEFINE_string('infer_dir', './imgs/infer/', 'the infer data dir')
 tf.app.flags.DEFINE_string('log_dir', './log', 'the logging dir')
 tf.app.flags.DEFINE_string('mode', 'train', 'train, val or infer')
 tf.app.flags.DEFINE_integer('num_gpus', 1, 'num of gpus')
+
+
+import os
+import numpy as np
+from datetime import datetime
+
+def make_dirlist(dirlist):
+    for dir in dirlist:
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+time_fmt = "%Y-%m-%d-%H-%M-%S"
+
+def now2string(fmt="%Y-%m-%d-%H-%M-%S"):
+    return datetime.now().strftime(fmt)
+
+def mape(pred, target):
+    return np.abs(pred - target) / target
+
+global_start_time = now2string()

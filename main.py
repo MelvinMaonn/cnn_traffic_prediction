@@ -6,14 +6,15 @@ import time
 
 from model.srcn import SRCN
 import data.read_data as rdd
-from utils import FLAGS
+from utils import *
 
+from log import *
 
 
 import os
 import logging
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
 logger = logging.getLogger('Train for CNN')
 logger.setLevel(logging.INFO)
@@ -34,19 +35,19 @@ def train(mode='train'):
                                       beta2=FLAGS.beta2).minimize(srcn.losses,
                                                                   global_step=global_step)
 
-    num_train_samples = 1021 * 21
-    num_batches_per_epoch = int((num_train_samples - 12) / FLAGS.batch_size)
-    num_val_samples = 1021 * 6
-    num_batches_val = int(num_val_samples / FLAGS.batch_size)
+    num_train_samples = 1021 * 27
+    num_batches_train_per_epoch = int((num_train_samples - FLAGS.time_step) / FLAGS.batch_size)
+    num_val_samples = 1021 * 3
+    num_batches_val_per_epoch = int((num_val_samples - FLAGS.time_step) / FLAGS.batch_size)
 
-    tr_image = rdd.get_files('/mnt/data1/mm/SRCN/data/data_30min/train/')
-    #train_img = rdd.get_batch_raw(tr_image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
-    va_image = rdd.get_files('/mnt/data1/mm/SRCN/data/data_30min/val/')
+    tr_image = rdd.get_files('/mnt/data5/mm/data/traffic/train_2/')
+    train_img = rdd.get_batch_raw(tr_image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
+    va_image = rdd.get_files('/mnt/data5/mm/data/traffic/test/')
     val_image = rdd.get_batch_raw(va_image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
-    #train_label = np.genfromtxt('data/800r_train.txt')
-    val_label = np.genfromtxt('data/800r_train.txt')
+    train_label = np.genfromtxt('data/800r_train_2.txt')
+    val_label = np.genfromtxt('data/800r_test.txt')
 
-    f = open('train_and_val_result.txt', 'w')
+    logger_val = open("logdir/" + global_start_time + "_val.txt", 'w')
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.allow_growth = True
@@ -76,30 +77,32 @@ def train(mode='train'):
             for cur_epoch in range(FLAGS.num_epochs):
                 start_time = time.time()
 
-                '''
-                # the training part
-                for cur_batch in range(num_batches_per_epoch):
+                all_train_loss = np.zeros(4)
+                all_val_loss = np.zeros(4)
 
-                    #x, y = sess.run([train_image, train_label])
+
+                # the training part
+                for cur_batch in range(num_batches_train_per_epoch):
+
                     x = sess.run(train_img)
                     y = rdd.get_label(cur_batch*FLAGS.batch_size, train_label)
 
                     feed_dict = {
                         srcn.xs: x,
                         srcn.ys: y,
-                        # create initial state
                     }
 
-                    _, loss, pred = sess.run([train_op, srcn.losses, srcn.pred], feed_dict=feed_dict)
-                    # calculate the cost
-                    #train_cost += batch_cost * FLAGS.batch_size
+                    results = sess.run([train_op, srcn.pred, srcn.losses, srcn.rmse_train, srcn.mae_train, srcn.mape_train],
+                                       feed_dict=feed_dict)
+
+                    all_train_loss += np.array(results[2:])
 
                     tf.summary.scalar('lrn_rate', lrn_rate)
 
-                    if cur_batch % 100 == 0:
+                    if cur_batch % 100 == 0 and cur_batch != 0:
                         rs = sess.run(merged, feed_dict=feed_dict)
                         writer.add_summary(rs, cur_batch)
-                        print(str(cur_batch) + ":" + str(loss))
+                        print(str(cur_batch) + ":" + str(all_train_loss / cur_batch + 1))
 
                 # save the checkpoint
                 if not os.path.isdir(FLAGS.checkpoint_dir):
@@ -107,9 +110,9 @@ def train(mode='train'):
                     print('no checkpoint')
                 logger.info('save checkpoint at step {0}', format(cur_epoch))
                 saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'srcn-model.ckpt'), global_step=cur_epoch)
-                '''
 
-                for cur_batch in range(num_batches_val):
+                # the val part
+                for cur_batch in range(num_batches_val_per_epoch):
 
                     x = sess.run(val_image)
                     y = rdd.get_label(cur_batch * FLAGS.batch_size, val_label)
@@ -119,27 +122,31 @@ def train(mode='train'):
                         srcn.ys: y,
                     }
 
-                    loss, pred = sess.run([srcn.losses, srcn.pred], feed_dict=feed_dict)
+                    results = sess.run([srcn.pred, srcn.losses, srcn.rmse_train, srcn.mae_train, srcn.mape_train],
+                                       feed_dict=feed_dict)
+
+                    all_val_loss += np.array(results[1:])
 
                     if cur_batch % 100 == 0:
-                        print(loss)
+                        print(str(cur_batch) + ":" + str(all_val_loss / cur_batch + 1))
 
-
-                now = datetime.datetime.now()
+                now = datetime.now()
                 log = "{}/{} {}:{}:{} Epoch {}/{}, " \
-                      "loss = {:.3f}, " \
+                      "train_loss = {}, " \
+                      "val_loss = {}, " \
                       "time = {:.3f}"
                 log = log.format(now.month, now.day, now.hour, now.minute, now.second,
-                                 cur_epoch + 1, FLAGS.num_epochs, loss, time.time() - start_time)
+                                 cur_epoch + 1, FLAGS.num_epochs,str(all_train_loss / num_batches_train_per_epoch),
+                                 str(all_val_loss / num_batches_val_per_epoch), time.time() - start_time)
                 print(log)
 
-                f.write(log+'\r\n')
+                logger_val.write(log+'\r\n')
 
         except tf.errors.OutOfRangeError:
             print('Done training epoch limit reached')
         finally:
             coord.request_stop()
-            f.close()
+            logger_val.close()
 
         coord.join(threads=threads)
 
@@ -160,76 +167,3 @@ if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
     tf.app.run()
 
-'''
-if __name__ == '__main__':
-
-    srcn = SRCN('train')
-    srcn.buildmodel()
-    srcn.compute_cost()
-    global_step = tf.train.get_or_create_global_step()
-    lrn_rate = tf.train.exponential_decay(FLAGS.initial_learning_rate,
-                                          global_step,
-                                          FLAGS.decay_steps,
-                                          FLAGS.decay_rate,
-                                          staircase=True)
-    # train_op = tf.train.RMSPropOptimizer(learning_rate=lrn_rate, momentum=FLAGS.momentum).minimize(srcn.cost,global_step=global_step)
-    train_op = tf.train.AdamOptimizer(learning_rate=lrn_rate,
-                                      beta1=FLAGS.beta1,
-                                      beta2=FLAGS.beta2).minimize(srcn.losses,
-                                                                  global_step=global_step)
-
-    x = rdd.get_batch2(FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step, 100)
-
-    label = np.genfromtxt('drive/SRCN/November_800r_velocity_cnn.txt')
-    # label = np.genfromtxt('E:/data/Data0/output4/SRCN/November_800r_velocity_cnn.txt')
-
-    saver = tf.train.Saver()
-
-    with tf.Session() as sess:
-
-        merged = tf.summary.merge_all()
-        writer = tf.summary.FileWriter("drive/CNN/logs", sess.graph)
-        # writer = tf.summary.FileWriter("logs", sess.graph)
-
-
-        sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer()))
-
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
-        try:
-
-            for i in range(((int)((30630 - 12 - 3) / 5)) * 20):
-
-                if coord.should_stop():
-                    break
-
-                if i == 0:
-                    x = x.eval()
-
-                y = rdd.get_label(i, label)
-
-                feed_dict = {
-                    srcn.xs: x,
-                    srcn.ys: y,
-                }
-
-                _, loss, pred = sess.run([train_op, srcn.losses, srcn.pred], feed_dict=feed_dict)
-
-                for j in range(5):
-                    print(pred[j * 12 + 11][144])
-
-                tf.summary.scalar('lrn_rate', lrn_rate)
-
-                if i % 100 == 0:
-                    rs = sess.run(merged, feed_dict=feed_dict)
-                    writer.add_summary(rs, i)
-                    saver.save(sess, "drive/CNN/my_net_10/save_net.ckpt")
-
-        except tf.errors.OutOfRangeError:
-            print('Done training epoch limit reached')
-        finally:
-            coord.request_stop()
-
-        coord.join(threads=threads)
-'''

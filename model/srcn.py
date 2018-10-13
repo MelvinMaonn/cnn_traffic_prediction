@@ -3,6 +3,8 @@ import model.cnn as CNN
 from utils import FLAGS
 import tensorflow as tf
 
+import lib.metrics as metrics
+
 class SRCN():
 
     def __init__(self, mode):
@@ -87,6 +89,12 @@ class SRCN():
         #TODO 确定如何计算loss
         self.losses = tf.reduce_mean(tf.abs(tf.reshape(self.pred,[-1]) - tf.reshape(self.ys,[-1])))
         tf.summary.scalar('loss', self.losses)
+
+        preds = tf.reshape(self.pred, [-1])
+        labels = tf.reshape(self.ys, [-1])
+        self.rmse_train = metrics.masked_rmse_tf(preds, labels, 0)
+        self.mae_train = metrics.masked_mae_tf(preds, labels, 0)
+        self.mape_train = metrics.masked_mape_tf(preds, labels, 0)
 
         # self.losses = tf.contrib.legacy_seq2seq.sequence_loss_by_example(
         #     [tf.reshape(self.pred, [-1], name='reshape_pred')],
