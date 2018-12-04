@@ -5,10 +5,10 @@ this is a deep CNN(DCNN) model for traffic prediction.
 
 
 #### 软件架构
-read_data: this is a data generator to feed your model
-utils: this is a settings file for the model params
-config: this is also a settings file for some varibles
-main: this is the train code
+    read_data: this is a data generator to feed your model
+    utils: this is a settings file for the model params
+    config: this is also a settings file for some varibles
+    main: this is the train code
 
 
 #### 安装教程
