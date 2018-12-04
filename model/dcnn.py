@@ -5,7 +5,7 @@ import tensorflow as tf
 
 import lib.metrics as metrics
 
-class SRCN():
+class DCNN():
 
     def __init__(self, mode):
 
@@ -14,18 +14,19 @@ class SRCN():
         with tf.name_scope('inputs'):
             self.xs = tf.placeholder(tf.float32, [None, FLAGS.image_height, FLAGS.image_width, FLAGS.image_channel], name='x_in')
             self.ys = tf.placeholder(tf.float32, [None, FLAGS.road_num], name='y_in')
-        # with tf.name_scope('model'):
-        #     self.buildmodel()
-        # with tf.name_scope('cost'):
-        #     self.compute_cost()
-        # with tf.name_scope('train'):
-        #     self.train_op = tf.train.RMSPropOptimizer(learning_rate=FLAGS.initial_learning_rate).minimize(self.cost)
+            self.global_step = tf.placeholder(dtype=tf.int32, shape=[], name="global_step")
+        with tf.name_scope('model'):
+            self.buildmodel()
+        with tf.name_scope('cost'):
+            self.compute_cost()
+        with tf.name_scope('train'):
+            self.create_training_op()
 
 
     def buildmodel(self):
 
         # 构建五层CNN
-        #TODO 需要改变
+        #TODO these params can be changed
         filters = [12, 16, 32, 64, 64, 128]
         strides = [1, 2]
 
@@ -52,10 +53,8 @@ class SRCN():
                     x = CNN.max_pool(x, 2, strides[1])
 
                     # _, feature_h, feature_w, _ = x.shape
-            # print('\nfeature_h: {}, feature_w: {}'.format(feature_h, feature_w))
 
-        # TODO 确定如何获取h和w
-        # x = tf.convert_to_tensor(x)
+        # TODO this dimension is computed by hand, and you can change the compute way by last line code
         feature_h = 42
         feature_w = 40
 
@@ -63,7 +62,7 @@ class SRCN():
         with tf.name_scope('flatten'):
             cnn_flat = tf.reshape(x, [-1, feature_h*feature_w*filters[5]], name='flat')
 
-        # 构建FCN
+        # 构建fully connected layer
         with tf.name_scope('fcn'):
             #TODO 需要确定大小
             W_fc1 = fcn.weight_variable([feature_h*feature_w*filters[5], FLAGS.road_num], name='W')
@@ -76,7 +75,7 @@ class SRCN():
         # with tf.name_scope('dropout'):
         #     lstm_drop = tf.nn.dropout(self.lstm2.pred, keep_prob=0.2, name='drop')
 
-        # 构建FCN
+        # 构建fully connected layer
         with tf.name_scope('fcn'):
             W_fc2 = fcn.weight_variable([FLAGS.road_num,FLAGS.road_num], name='W')
             tf.summary.histogram(name='fcn-2/weights', values=W_fc2)
@@ -86,7 +85,6 @@ class SRCN():
 
 
     def compute_cost(self):
-        #TODO 确定如何计算loss
         self.losses = tf.reduce_mean(tf.abs(tf.reshape(self.pred,[-1]) - tf.reshape(self.ys,[-1])))
         tf.summary.scalar('loss', self.losses)
 
@@ -96,24 +94,17 @@ class SRCN():
         self.mae_train = metrics.masked_mae_tf(preds, labels, 0)
         self.mape_train = metrics.masked_mape_tf(preds, labels, 0)
 
-        # self.losses = tf.contrib.legacy_seq2seq.sequence_loss_by_example(
-        #     [tf.reshape(self.pred, [-1], name='reshape_pred')],
-        #     [tf.reshape(self.ys, [-1], name='reshape_target')],
-        #     [tf.ones([FLAGS.batch_size * FLAGS.time_step * FLAGS.road_num], dtype=tf.float32)],
-        #     average_across_timesteps=True,
-        #     softmax_loss_function=self.ms_error,
-        #     name='losses'
-        # )
-        #
-        # with tf.name_scope('average_cost'):
-        #     self.cost = tf.div(
-        #         tf.reduce_sum(self.losses, name='losses_sum'),
-        #         FLAGS.batch_size,
-        #         name='average_cost')
-        #     tf.summary.scalar('cost', self.cost)
 
+    def create_training_op(self):
 
+        self.lrn_rate = tf.train.exponential_decay(FLAGS.initial_learning_rate,
+                                              self.global_step,
+                                              FLAGS.decay_steps,
+                                              FLAGS.decay_rate,
+                                              staircase=True)
+        tf.summary.scalar('lrn_rate', self.lrn_rate)
 
-    @staticmethod
-    def ms_error(labels, logits):
-        return tf.square(tf.subtract(labels, logits))
+        self.train_op = tf.train.AdamOptimizer(learning_rate=self.lrn_rate,
+                                          beta1=FLAGS.beta1,
+                                          beta2=FLAGS.beta2).minimize(self.losses)
+

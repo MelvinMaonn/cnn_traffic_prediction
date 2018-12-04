@@ -1,51 +1,27 @@
 import datetime
-
-import tensorflow as tf
-import numpy as np
+import logging
+import os
 import time
 
-from model.srcn import SRCN
+import numpy as np
+
 import data.read_data as rdd
+from config import NUM_BATCHES_TRAIN_PER_EPOCH, NUM_BATCHES_VAL_PER_EPOCH, TRAIN_IMAGE_DIR, TRAIN_LABEL_PATH, \
+    VAL_IMAGE_DIR, VAL_LABEL_PATH
+from model.dcnn import DCNN
 from utils import *
 
-from log import *
-
-
-import os
-import logging
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 
 logger = logging.getLogger('Train for CNN')
 logger.setLevel(logging.INFO)
 
 def train(mode='train'):
-    srcn = SRCN(mode)
-    srcn.buildmodel()
-    srcn.compute_cost()
-    global_step = tf.train.get_or_create_global_step()
 
-    lrn_rate = tf.train.exponential_decay(FLAGS.initial_learning_rate,
-                                          global_step,
-                                          FLAGS.decay_steps,
-                                          FLAGS.decay_rate,
-                                          staircase=True)
-    train_op = tf.train.AdamOptimizer(learning_rate=lrn_rate,
-                                      beta1=FLAGS.beta1,
-                                      beta2=FLAGS.beta2).minimize(srcn.losses,
-                                                                  global_step=global_step)
+    dcnn = DCNN(mode)
 
-    num_train_samples = 1021 * 27
-    num_batches_train_per_epoch = int((num_train_samples - FLAGS.time_step) / FLAGS.batch_size)
-    num_val_samples = 1021 * 3
-    num_batches_val_per_epoch = int((num_val_samples - FLAGS.time_step) / FLAGS.batch_size)
-
-    tr_image = rdd.get_files('/mnt/data5/mm/data/traffic/train_2/')
-    train_img = rdd.get_batch_raw(tr_image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
-    va_image = rdd.get_files('/mnt/data5/mm/data/traffic/test/')
-    val_image = rdd.get_batch_raw(va_image, FLAGS.image_height, FLAGS.image_width, FLAGS.batch_size * FLAGS.time_step,100)
-    train_label = np.genfromtxt('data/800r_train_2.txt')
-    val_label = np.genfromtxt('data/800r_test.txt')
+    train_image, train_label = get_image_and_label(TRAIN_IMAGE_DIR, TRAIN_LABEL_PATH)
+    val_image, val_label = get_image_and_label(VAL_IMAGE_DIR, VAL_LABEL_PATH)
 
     logger_val = open("logdir/" + global_start_time + "_val.txt", 'w')
 
@@ -58,7 +34,6 @@ def train(mode='train'):
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=100)
         merged = tf.summary.merge_all()
         writer = tf.summary.FileWriter("logs/", sess.graph)
-        #train_writer = tf.summary.FileWriter(FLAGS.log_dir + '/train', sess.graph)
         if FLAGS.restore:
             ckpt = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
             if ckpt:
@@ -80,24 +55,24 @@ def train(mode='train'):
                 all_train_loss = np.zeros(4)
                 all_val_loss = np.zeros(4)
 
-
                 # the training part
-                for cur_batch in range(num_batches_train_per_epoch):
+                for cur_batch in range(NUM_BATCHES_TRAIN_PER_EPOCH):
 
-                    x = sess.run(train_img)
+                    global_step = cur_batch + cur_epoch * cur_batch
+
+                    x = sess.run(train_image)
                     y = rdd.get_label(cur_batch*FLAGS.batch_size, train_label)
 
                     feed_dict = {
-                        srcn.xs: x,
-                        srcn.ys: y,
+                        dcnn.xs: x,
+                        dcnn.ys: y,
+                        dcnn.global_step: global_step
                     }
 
-                    results = sess.run([train_op, srcn.pred, srcn.losses, srcn.rmse_train, srcn.mae_train, srcn.mape_train],
+                    results = sess.run([dcnn.train_op, dcnn.pred, dcnn.losses, dcnn.rmse_train, dcnn.mae_train, dcnn.mape_train],
                                        feed_dict=feed_dict)
 
                     all_train_loss += np.array(results[2:])
-
-                    tf.summary.scalar('lrn_rate', lrn_rate)
 
                     if cur_batch % 100 == 0 and cur_batch != 0:
                         rs = sess.run(merged, feed_dict=feed_dict)
@@ -109,25 +84,25 @@ def train(mode='train'):
                     os.mkdir(FLAGS.checkpoint_dir)
                     print('no checkpoint')
                 logger.info('save checkpoint at step {0}', format(cur_epoch))
-                saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'srcn-model.ckpt'), global_step=cur_epoch)
+                saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'dcnn-model.ckpt'), global_step=cur_epoch)
 
                 # the val part
-                for cur_batch in range(num_batches_val_per_epoch):
+                for cur_batch in range(NUM_BATCHES_VAL_PER_EPOCH):
 
                     x = sess.run(val_image)
                     y = rdd.get_label(cur_batch * FLAGS.batch_size, val_label)
 
                     feed_dict = {
-                        srcn.xs: x,
-                        srcn.ys: y,
+                        dcnn.xs: x,
+                        dcnn.ys: y,
                     }
 
-                    results = sess.run([srcn.pred, srcn.losses, srcn.rmse_train, srcn.mae_train, srcn.mape_train],
+                    results = sess.run([dcnn.pred, dcnn.losses, dcnn.rmse_train, dcnn.mae_train, dcnn.mape_train],
                                        feed_dict=feed_dict)
 
                     all_val_loss += np.array(results[1:])
 
-                    if cur_batch % 100 == 0:
+                    if cur_batch % 100 == 0 and cur_batch != 0:
                         print(str(cur_batch) + ":" + str(all_val_loss / cur_batch + 1))
 
                 now = datetime.now()
@@ -136,8 +111,8 @@ def train(mode='train'):
                       "val_loss = {}, " \
                       "time = {:.3f}"
                 log = log.format(now.month, now.day, now.hour, now.minute, now.second,
-                                 cur_epoch + 1, FLAGS.num_epochs,str(all_train_loss / num_batches_train_per_epoch),
-                                 str(all_val_loss / num_batches_val_per_epoch), time.time() - start_time)
+                                 cur_epoch + 1, FLAGS.num_epochs,str(all_train_loss / NUM_BATCHES_TRAIN_PER_EPOCH),
+                                 str(all_val_loss / NUM_BATCHES_VAL_PER_EPOCH), time.time() - start_time)
                 print(log)
 
                 logger_val.write(log+'\r\n')
@@ -149,6 +124,15 @@ def train(mode='train'):
             logger_val.close()
 
         coord.join(threads=threads)
+
+
+def get_image_and_label(image_dir, label_path):
+    image_path = rdd.get_files(image_dir)
+    image = rdd.get_batch_raw(image_path, FLAGS.image_height, FLAGS.image_width,
+                                    FLAGS.batch_size * FLAGS.time_step, 100)
+    label = np.genfromtxt(label_path)
+    return image, label
+
 
 def main(_):
     if FLAGS.num_gpus == 0:
