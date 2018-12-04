@@ -3,7 +3,7 @@ import model.cnn as CNN
 from utils import FLAGS
 import tensorflow as tf
 
-import lib.metrics as metrics
+import libs.metrics as metrics
 
 class DCNN():
 
